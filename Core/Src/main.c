@@ -40,7 +40,8 @@
 #define SIZE_BUFFER_32 320*240*2/4
 #define NB_PIXELS 320*240
 #define SDRAM_BANK_1_DCMI ((uint32_t)0xC0000000)
-#define SDRAM_BANK_1_LTCD ((uint32_t)0xC0400000)
+#define SDRAM_BANK_1_LTCD ((uint32_t)0xC0200000)
+#define SDRAM_BANK_1_PHOTO ((uint32_t)0xC0400000)
 
 /* USER CODE END PD */
 
@@ -58,6 +59,9 @@ DMA2D_HandleTypeDef hdma2d;
 
 LTDC_HandleTypeDef hltdc;
 
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim6;
+
 UART_HandleTypeDef huart1;
 
 SDRAM_HandleTypeDef hsdram1;
@@ -65,7 +69,9 @@ SDRAM_HandleTypeDef hsdram1;
 /* USER CODE BEGIN PV */
 /* Private variables ----------------------------------------------------*/
 uint32_t photo_buffer_32[SIZE_BUFFER_32];
+//uint32_t photo_treated_buffer_32[SIZE_BUFFER_32];
 int counter = 0;
+int position = 0;
 
 typedef enum
 {
@@ -106,16 +112,62 @@ static void MX_DMA2D_Init(void);
 static void MX_FMC_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_LTDC_Init(void);
+static void MX_TIM6_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------*/
 uint8_t CAMERA_Init(uint32_t );
 static void LTDC_Init(uint32_t , uint16_t , uint16_t , uint16_t, uint16_t);
 void LCD_GPIO_Init(LTDC_HandleTypeDef *, void *);
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim7;
+int freq = 5;
+float absposition;
+int old_freq = 1;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void TIM2_IRQHandler(void){
+	if(position>30 || position < -30){
+		if(position>0){
+			HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_6);
+			HAL_GPIO_WritePin(GPIOG, GPIO_PIN_7, GPIO_PIN_RESET);
+		}
+		if(position<0){
+			HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_7);
+			HAL_GPIO_WritePin(GPIOG, GPIO_PIN_6, GPIO_PIN_RESET);
+		}
+	}
+	if(position<30 && position > -30){
+		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_7, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_6, GPIO_PIN_RESET);
+	}
+	//Calcul de freq
+	absposition = (float)position;
+	if(absposition<0) absposition = -absposition;
+	freq = 10*((float)(absposition/160));
+	if(freq < 2){
+		freq = 2;
+	}
+	if(old_freq != freq){
+		//Update de TIM2
+		__TIM2_CLK_ENABLE();
+		htim2.Instance = TIM2;
+		htim2.Init.Prescaler = 10800-1;
+		htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+		htim2.Init.Period = 9999/freq;
+		htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+		htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+		HAL_TIM_Base_Init(&htim2);
+		HAL_NVIC_SetPriority(TIM2_IRQn, 1, 0);
+		HAL_NVIC_EnableIRQ(TIM2_IRQn);
+		HAL_TIM_Base_Start_IT(&htim2);
+	}
 
+	old_freq = freq;
+	HAL_TIM_IRQHandler(&htim2);
+}
 /* USER CODE END 0 */
 
 /**
@@ -126,6 +178,18 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 
+	//TIM2
+	__TIM2_CLK_ENABLE();
+	htim2.Instance = TIM2;
+	htim2.Init.Prescaler = 10800-1;
+	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim2.Init.Period = 9999/freq;
+	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	HAL_TIM_Base_Init(&htim2);
+	HAL_NVIC_SetPriority(TIM2_IRQn, 1, 0);
+	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+	HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -152,18 +216,27 @@ int main(void)
   MX_FMC_Init();
   MX_USART1_UART_Init();
   MX_LTDC_Init();
+  MX_TIM6_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   LTDC_Init(SDRAM_BANK_1_LTCD, 0, 0, 320, 240);
   BSP_SDRAM_Init();
   CAMERA_Init(CAMERA_R320x240);
   HAL_Delay(1000); //Delay for the camera to output correct data
   Im_size = 0x9600; //size=320*240*2/4
+
   /* uncomment the following line in case of snapshot mode */
   //HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_SNAPSHOT, SDRAM_BANK_1_DCMI, Im_size);
   /* uncomment the following line in case of continuous mode */
   HAL_DCMI_Start_DMA(&hdcmi, DCMI_MODE_CONTINUOUS , SDRAM_BANK_1_DCMI, Im_size);
 
+  // seuilBleu, seuilVert = partie qui passe
+  uint16_t seuilRouge = 50, seuilVert = 50, seuilBleu = 50;
 
+  seuilVert = (uint16_t) seuilVert*2016/100;
+  seuilBleu = (uint16_t) seuilBleu*31/100;
+  seuilRouge = (uint16_t) (100-seuilRouge)*63488/100;
+  HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -175,30 +248,21 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  BSP_SDRAM_ReadData(SDRAM_BANK_1_DCMI, (uint32_t*)photo_buffer_32, SIZE_BUFFER_32);
 	  uint16_t* photo_buffer_16 = (uint16_t*) photo_buffer_32;
-	  int x = 0, y = 0, k = 0;
-	  for(int i=0;i<SIZE_BUFFER_32*2; i++){
-		  uint16_t rouge = photo_buffer_16[i] & 0xF800;
-		  uint16_t vert = photo_buffer_16[i] & 0x07E0;
-		  uint16_t bleu = photo_buffer_16[i] & 0x001F;
-		  if(vert > 0x03F0 || bleu > 0x000F){
-			  photo_buffer_16[i] = 0;
-		  }
-		  else if(rouge < 0x1800 ){
-			  photo_buffer_16[i] = 0;
-		  }
-		  else{
-			  k++;
-			  //Translate i into x and y coordinates
-			  x += i%320;
-			  y += i/320;
-		  }
-	  }
-	  x /= k;
-	  y /= k;
+
+	  int x, y, k;
+	  int* px = &x; int* py = &y; int* pk = &k;
+
+	  //uint16_t* photo_treated_buffer_16 = (uint16_t*) photo_treated_buffer_32;
+	  //Gaussian_Filter(photo_buffer_16, photo_treated_buffer_16, NB_PIXELS);
+
+	  Filter_Colors_And_Get_Center(seuilRouge,  seuilVert, seuilBleu, NB_PIXELS, photo_buffer_16, px, py, pk);
 	  Draw_Blue_Cross(x, y, 1, photo_buffer_16);
+	  position = x - 160;
+
 
 	  BSP_SDRAM_WriteData(SDRAM_BANK_1_LTCD, (uint32_t*)photo_buffer_32, SIZE_BUFFER_32);
 	  HAL_Delay(100);
+
   }
   /* USER CODE END 3 */
 }
@@ -423,6 +487,89 @@ static void MX_LTDC_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 10800-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 10000-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 0;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 65535;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+
+  /* USER CODE END TIM6_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -597,14 +744,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_OTG_HS;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ARDUINO_PWM_D3_Pin */
-  GPIO_InitStruct.Pin = ARDUINO_PWM_D3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
-  HAL_GPIO_Init(ARDUINO_PWM_D3_GPIO_Port, &GPIO_InitStruct);
-
   /*Configure GPIO pin : SPDIF_RX0_Pin */
   GPIO_InitStruct.Pin = SPDIF_RX0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -775,11 +914,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF10_OTG_HS;
   HAL_GPIO_Init(ULPI_NXT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : ARDUINO_D4_Pin ARDUINO_D2_Pin EXT_RST_Pin */
-  GPIO_InitStruct.Pin = ARDUINO_D4_Pin|ARDUINO_D2_Pin|EXT_RST_Pin;
+  /*Configure GPIO pins : ARDUINO_D4_Pin ARDUINO_D2_Pin */
+  GPIO_InitStruct.Pin = ARDUINO_D4_Pin|ARDUINO_D2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /*Configure GPIO pins : ARDUINO_A4_Pin ARDUINO_A5_Pin ARDUINO_A1_Pin ARDUINO_A2_Pin
@@ -821,6 +960,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF9_QUADSPI;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : EXT_RST_Pin */
+  GPIO_InitStruct.Pin = EXT_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(EXT_RST_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : RMII_RXER_Pin */
   GPIO_InitStruct.Pin = RMII_RXER_Pin;
@@ -1017,6 +1163,13 @@ RK043FN48H_HBP + RK043FN48H_HFP - 1);
   status = CAMERA_NOT_SUPPORTED; /* Return CAMERA_NOT_SUPPORTED status */
   }
   return status;
+ }
+ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+ {
+     if (htim->Instance == htim3.Instance)
+     {
+
+     }
  }
 /* USER CODE END 4 */
 

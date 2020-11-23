@@ -1,1 +1,3 @@
 image_analysis.c:10:6:Draw_Blue_Cross	40	static
+image_analysis.c:26:6:Filter_Colors_And_Get_Center	56	static
+image_analysis.c:61:6:Gaussian_Filter	80	static
