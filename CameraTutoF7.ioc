@@ -1175,4 +1175,3 @@ VP_TIM6_VS_ClockSourceINT.Mode=Enable_Timer
 VP_TIM6_VS_ClockSourceINT.Signal=TIM6_VS_ClockSourceINT
 board=STM32F746G-DISCO
 boardIOC=true
-isbadioc=false

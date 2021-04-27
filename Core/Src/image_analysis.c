@@ -6,6 +6,7 @@
  */
 
 #include <stdint.h>
+#include "arm_math.h"
 
 void Draw_Blue_Cross(int x, int y, int thickness, uint16_t* photo_buffer){
 	//Horizontal blue line
@@ -60,9 +61,9 @@ void Filter_Colors_And_Get_Center(uint16_t r_threshold, uint16_t g_threshold, ui
 
 void Gaussian_Filter(uint16_t* photo_buffer, uint16_t* photo_blurred, int nb_pixels){
 	float filter[3][3] = {
-		{1/9, 1/9, 1/9} ,   /*  initializers for row indexed by 0 */
-		{1/9, 1/9, 1/9} ,   /*  initializers for row indexed by 1 */
-		{1/9, 1/9, 1/9}   /*  initializers for row indexed by 2 */
+		{1/9, 1/9, 1/9} ,
+		{1/9, 1/9, 1/9} ,
+		{1/9, 1/9, 1/9}
 	};
 	int x, y;
 	int sum;
@@ -77,13 +78,17 @@ void Gaussian_Filter(uint16_t* photo_buffer, uint16_t* photo_blurred, int nb_pix
 			//sum += photo_buffer[i+320]*filter[0][1];
 			//sum += photo_buffer[i+319]*filter[0][2];
 
-			sum += (photo_buffer[i] & 0xF800)/2;
-			sum += (photo_buffer[i] & 0x07E0)/2;
-			sum += (photo_buffer[i] & 0x001F)/2;
+			sum += (photo_buffer[i] & 0xF800)/3;
+			sum += (photo_buffer[i] & 0x07E0)/3;
+			sum += (photo_buffer[i] & 0x001F)/3;
 
-			sum += (photo_buffer[i+1] & 0xF800)/2;
-			sum += (photo_buffer[i+1] & 0x07E0)/2;
-			sum += (photo_buffer[i+1] & 0x001F)/2;
+			sum += (photo_buffer[i+1] & 0xF800)/3;
+			sum += (photo_buffer[i+1] & 0x07E0)/3;
+			sum += (photo_buffer[i+1] & 0x001F)/3;
+
+			sum += (photo_buffer[i-1] & 0xF800)/3;
+			sum += (photo_buffer[i-1] & 0x07E0)/3;
+			sum += (photo_buffer[i-1] & 0x001F)/3;
 			//sum += photo_buffer[i-1]*1;
 
 			//sum += photo_buffer[i-319]*filter[2][0];
@@ -97,4 +102,9 @@ void Gaussian_Filter(uint16_t* photo_buffer, uint16_t* photo_blurred, int nb_pix
 			photo_blurred[i] = photo_buffer[i];
 		}
 	}
+}
+void Gaussian_Filter_Fast(uint16_t* photo_buffer, q15_t* kernel, uint32_t size_kernel, uint16_t* photo_blurred, int nb_pixels){
+
+	//arm_conv_fast_q15(photo_buffer, nb_pixels, kernel, size_kernel, photo_blurred );
+	//arm_conv_f32(photo_buffer, nb_pixels, kernel, size_kernel, photo_blurred );
 }

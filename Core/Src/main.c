@@ -69,7 +69,7 @@ SDRAM_HandleTypeDef hsdram1;
 /* USER CODE BEGIN PV */
 /* Private variables ----------------------------------------------------*/
 uint32_t photo_buffer_32[SIZE_BUFFER_32];
-//uint32_t photo_treated_buffer_32[SIZE_BUFFER_32];
+uint32_t photo_treated_buffer_32[SIZE_BUFFER_32];
 int counter = 0;
 int position = 0;
 
@@ -177,7 +177,6 @@ void TIM2_IRQHandler(void){
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
 	//TIM2
 	__TIM2_CLK_ENABLE();
 	htim2.Instance = TIM2;
@@ -237,6 +236,21 @@ int main(void)
   seuilBleu = (uint16_t) seuilBleu*31/100;
   seuilRouge = (uint16_t) (100-seuilRouge)*63488/100;
   HAL_TIM_Base_Start_IT(&htim3);
+
+  // Init the kernel
+  int largeur_kernel = 3;
+  uint32_t size_kernel = (largeur_kernel - 1)*320+largeur_kernel;
+  float kernel[size_kernel];
+  for(int i=0; i<size_kernel; i++){
+	kernel[i] = 0;
+  }
+  for(int i=0;i<largeur_kernel; i++){
+	  for(int j=0;j<largeur_kernel; j++){
+		  kernel[i + 320*j] = 1/9;
+	  }
+  }
+  //kernel[320+1]=1;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -252,16 +266,17 @@ int main(void)
 	  int x, y, k;
 	  int* px = &x; int* py = &y; int* pk = &k;
 
-	  //uint16_t* photo_treated_buffer_16 = (uint16_t*) photo_treated_buffer_32;
-	  //Gaussian_Filter(photo_buffer_16, photo_treated_buffer_16, NB_PIXELS);
-
+	  uint16_t* photo_treated_buffer_16 = (uint16_t*) photo_treated_buffer_32;
+	  Gaussian_Filter(photo_buffer_16, photo_buffer_16, NB_PIXELS);
 	  Filter_Colors_And_Get_Center(seuilRouge,  seuilVert, seuilBleu, NB_PIXELS, photo_buffer_16, px, py, pk);
-	  Draw_Blue_Cross(x, y, 1, photo_buffer_16);
 	  position = x - 160;
+	  Draw_Blue_Cross(x, y, 1, photo_buffer_16);
 
+	  //Gaussian_Filter_Fast(photo_buffer_16, kernel, size_kernel, photo_buffer_16, NB_PIXELS);
 
 	  BSP_SDRAM_WriteData(SDRAM_BANK_1_LTCD, (uint32_t*)photo_buffer_32, SIZE_BUFFER_32);
-	  HAL_Delay(100);
+
+	  HAL_Delay(1);
 
   }
   /* USER CODE END 3 */
