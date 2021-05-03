@@ -1,0 +1,80 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity CrossAverager is
+
+	Port(
+	
+		--Pris de NotreFiltre
+		R : in STD_LOGIC_VECTOR(7 downto 0);
+		
+		filtre : in STD_LOGIC;
+		
+		--Pris du VGA_Controller
+		H : in STD_LOGIC_VECTOR(12 downto 0);
+		V : in STD_LOGIC_VECTOR(12 downto 0);
+		
+		clock : in STD_LOGIC;
+		
+		blank : in STD_LOGIC;
+		
+		--Sortie couleurs
+		LCDR : out STD_LOGIC_VECTOR(7 downto 0);
+		
+		X : out STD_LOGIC_VECTOR(10 downto 0);
+		Y : out STD_LOGIC_VECTOR(10 downto 0)
+		
+	);
+end CrossAverager;
+
+
+
+architecture CrossAArchi of CrossAverager is
+begin
+
+LCDR<=R;
+
+-- PROCESS DE MOYENNE
+process (clock)	
+	variable x : integer range 0 to 100000 := 0;
+	variable y : integer range 0 to 100000 := 0;
+	
+	variable xCross : integer range 0 to 10000 := 0;
+	variable yCross : integer range 0 to 10000 := 0;
+	
+	variable nbPixRouges : integer range 0 to 10000 := 0;
+	
+	begin
+		if blank = '1' then
+		
+			if filtre = '0' then
+				nbPixRouges := nbPixRouges + 1;
+				x := x + to_integer(unsigned(H));
+				y := y + to_integer(unsigned(V));
+			else
+				nbPixRouges := nbPixRouges;
+				x := x;
+				y := y;
+			end if;
+					
+			--Update du centre de la croix en cas de fin de frame
+			if (to_integer(unsigned(H)) = 800-2) and (to_integer(unsigned(V)) = 480-2) then --ou alors h = 3264 et v = 2448
+				xCross := x/nbPixRouges;
+				yCross := y/nbPixRouges;
+				
+			elsif ((to_integer(unsigned(H)) = 800-1) and (to_integer(unsigned(V)) = 480-1)) then
+				y := 0;
+				x := 0;
+				
+			else
+				xCross := xCross;
+				yCross := yCross;
+				
+			end if;
+		end if;
+			
+end process;
+	
+end CrossAArchi;
+

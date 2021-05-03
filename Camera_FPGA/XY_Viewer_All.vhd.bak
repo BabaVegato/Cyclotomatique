@@ -1,0 +1,19 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.numeric_std.ALL;
+
+entity XY_Viewer_All is
+port(
+	x,y : in unsigned(12 downto 0);
+	btn : in STD_LOGIC;
+	digit0, digit1, digit2, digit3, digit4, digit5 : out STD_LOGIC_VECTOR(7 downto 0)
+);
+end XY_Viewer_All;
+
+architecture bhv of XY_Viewer_All is
+
+begin
+
+
+
+end bhv;
